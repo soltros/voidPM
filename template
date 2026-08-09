@@ -1,0 +1,19 @@
+# Template file for 'voidpm'
+pkgname=voidpm
+version=0.1.0
+revision=1
+build_style=go
+go_import_path="github.com/voidlinux/voidpm"
+short_desc="Elegant Void Linux System & Package Manager Overlay"
+maintainer="Derrik <derrik@voidlinux.local>"
+license="MIT"
+homepage="https://github.com/voidlinux/voidpm"
+
+do_fetch() {
+	mkdir -p "${wrksrc}"
+	if [ -d "${FILESDIR}" ]; then
+		cp -a "${FILESDIR}/." "${wrksrc}/"
+	else
+		bsdtar -xzf "${XBPS_SRCDIR}/distfiles/${pkgname}-${version}.tar.gz" -C "${wrksrc}"
+	fi
+}
