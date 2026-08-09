@@ -231,7 +231,7 @@ func FormatLogLine(line string) string {
 	return line
 }
 
-// TailLogs reads and formats log entries for a service
+// TailLogs reads and formats log entries for a service (with automatic elevation fallback if permission denied)
 func (m *Manager) TailLogs(name string, lines int) ([]string, error) {
 	logPath, err := m.ResolveLogFile(name)
 	if err != nil {
@@ -240,6 +240,20 @@ func (m *Manager) TailLogs(name string, lines int) ([]string, error) {
 
 	file, err := os.Open(logPath)
 	if err != nil {
+		if os.IsPermission(err) || strings.Contains(err.Error(), "permission denied") {
+			// Permission denied fallback using sudo/doas elevation
+			out, elevErr := sys.RunElevatedCombined("tail", "-n", strconv.Itoa(lines), logPath)
+			if elevErr != nil {
+				return nil, fmt.Errorf("permission denied reading log file %s (elevation failed: %w)", logPath, elevErr)
+			}
+
+			var formatted []string
+			scanner := bufio.NewScanner(strings.NewReader(out))
+			for scanner.Scan() {
+				formatted = append(formatted, FormatLogLine(scanner.Text()))
+			}
+			return formatted, nil
+		}
 		return nil, fmt.Errorf("failed to open log file %s: %w", logPath, err)
 	}
 	defer file.Close()
@@ -256,14 +270,17 @@ func (m *Manager) TailLogs(name string, lines int) ([]string, error) {
 	return allLines[len(allLines)-lines:], nil
 }
 
-// StreamLogs continuously streams live log output to writer
+// StreamLogs continuously streams live log output to writer (with elevation fallback)
 func (m *Manager) StreamLogs(name string, out io.Writer) error {
 	logPath, err := m.ResolveLogFile(name)
 	if err != nil {
 		return err
 	}
 
-	// Use tail -f or native loop for continuous streaming
+	if _, err := os.Open(logPath); err != nil && (os.IsPermission(err) || strings.Contains(err.Error(), "permission denied")) {
+		return sys.RunElevated("tail", "-n", "50", "-f", logPath)
+	}
+
 	cmd := exec.Command("tail", "-n", "50", "-f", logPath)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
