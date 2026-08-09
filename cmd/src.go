@@ -141,6 +141,19 @@ var srcAllowRestrictedCmd = &cobra.Command{
 	},
 }
 
+var srcUpdateSysCmd = &cobra.Command{
+	Use:   "update-sys",
+	Short: "Update void-packages git repo and masterdir chroot",
+	Run: func(cmd *cobra.Command, args []string) {
+		mgr := xbps.NewSrcManager()
+		if err := mgr.UpdateSys(); err != nil {
+			fmt.Println(ui.RenderError(err.Error()))
+			os.Exit(1)
+		}
+		fmt.Println(ui.RenderSuccess("void-packages repo and masterdir chroot updated successfully!"))
+	},
+}
+
 func init() {
 	srcBuildCmd.Flags().BoolVarP(&allowRestricted, "restricted", "m", false, "Allow restricted packages (XBPS_ALLOW_RESTRICTED=yes)")
 
@@ -150,6 +163,7 @@ func init() {
 	srcCmd.AddCommand(srcInstallCmd)
 	srcCmd.AddCommand(srcSearchCmd)
 	srcCmd.AddCommand(srcAllowRestrictedCmd)
+	srcCmd.AddCommand(srcUpdateSysCmd)
 
 	rootCmd.AddCommand(srcCmd)
 }

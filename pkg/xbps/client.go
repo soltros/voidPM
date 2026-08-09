@@ -218,11 +218,74 @@ func (c *Client) WhoOwns(filepath string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// ListExplicit lists explicitly installed packages (xbps-query -m)
+func (c *Client) ListExplicit() ([]string, error) {
+	cmd := exec.Command("xbps-query", "-m")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query explicit packages: %w", err)
+	}
+
+	var explicit []string
+	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			name, _ := splitPkgVersion(line)
+			explicit = append(explicit, name)
+		}
+	}
+	return explicit, nil
+}
+
+// ImportPackages installs packages listed in slice
+func (c *Client) ImportPackages(pkgs []string, yes bool) error {
+	if len(pkgs) == 0 {
+		return nil
+	}
+	args := []string{"xbps-install", "-S"}
+	if yes {
+		args = append(args, "-y")
+	}
+	args = append(args, pkgs...)
+	return sys.RunElevated(args...)
+}
+
+// GetPendingUpdatesList queries xbps-install -un to retrieve list of pending updates
+func (c *Client) GetPendingUpdatesList() ([]string, error) {
+	cmd := exec.Command("xbps-install", "-un")
+	out, err := cmd.Output()
+	if err != nil && len(out) == 0 {
+		return nil, nil
+	}
+
+	var updates []string
+	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" && !strings.HasPrefix(line, "Name") {
+			parts := strings.Fields(line)
+			if len(parts) > 0 {
+				name, _ := splitPkgVersion(parts[0])
+				updates = append(updates, name)
+			}
+		}
+	}
+	return updates, nil
+}
+
 // Install installs or updates packages with interactive output
 func (c *Client) Install(pkgs []string, sync bool) error {
+	return c.InstallWithOptions(pkgs, sync, false)
+}
+
+func (c *Client) InstallWithOptions(pkgs []string, sync bool, yes bool) error {
 	args := []string{"xbps-install"}
 	if sync {
 		args = append(args, "-S")
+	}
+	if yes {
+		args = append(args, "-y")
 	}
 	args = append(args, pkgs...)
 	return sys.RunElevated(args...)
@@ -230,9 +293,16 @@ func (c *Client) Install(pkgs []string, sync bool) error {
 
 // Remove removes packages
 func (c *Client) Remove(pkgs []string, recursive bool) error {
+	return c.RemoveWithOptions(pkgs, recursive, false)
+}
+
+func (c *Client) RemoveWithOptions(pkgs []string, recursive bool, yes bool) error {
 	args := []string{"xbps-remove"}
 	if recursive {
 		args = append(args, "-R")
+	}
+	if yes {
+		args = append(args, "-y")
 	}
 	args = append(args, pkgs...)
 	return sys.RunElevated(args...)
@@ -240,9 +310,23 @@ func (c *Client) Remove(pkgs []string, recursive bool) error {
 
 // UpdateSystem performs a full system update (xbps-install -Su)
 func (c *Client) UpdateSystem() error {
-	// First update xbps itself if needed, then update all packages
-	_ = sys.RunElevated("xbps-install", "-Su", "xbps")
-	return sys.RunElevated("xbps-install", "-Su")
+	return c.UpdateSystemWithOptions(false)
+}
+
+func (c *Client) UpdateSystemWithOptions(yes bool) error {
+	argsXBPS := []string{"xbps-install", "-Su", "xbps"}
+	argsFull := []string{"xbps-install", "-Su"}
+	if yes {
+		argsXBPS = append(argsXBPS, "-y")
+		argsFull = append(argsFull, "-y")
+	}
+	_ = sys.RunElevated(argsXBPS...)
+	return sys.RunElevated(argsFull...)
+}
+
+// SyncRepos updates repository index files (xbps-install -S)
+func (c *Client) SyncRepos() error {
+	return sys.RunElevated("xbps-install", "-S")
 }
 
 // Hold puts a package on hold

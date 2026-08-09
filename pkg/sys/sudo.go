@@ -12,6 +12,14 @@ func IsRoot() bool {
 	return os.Geteuid() == 0
 }
 
+// EnsurePrivileges checks if current user is root, returning error if unprivileged
+func EnsurePrivileges() error {
+	if !IsRoot() {
+		return fmt.Errorf("this operation requires root privileges; rerun with 'sudo' or elevated permissions")
+	}
+	return nil
+}
+
 // FindElevator returns "doas" or "sudo" depending on availability, or empty if none found
 func FindElevator() string {
 	if _, err := exec.LookPath("doas"); err == nil {
@@ -25,6 +33,10 @@ func FindElevator() string {
 
 // WrapElevated wraps a command slice with sudo or doas if not running as root
 func WrapElevated(args []string) ([]string, error) {
+	if len(args) == 0 {
+		return nil, fmt.Errorf("no command provided for execution")
+	}
+
 	if IsRoot() {
 		return args, nil
 	}

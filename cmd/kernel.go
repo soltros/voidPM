@@ -21,9 +21,10 @@ var kernelCmd = &cobra.Command{
 }
 
 var kStatusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Show active running kernel, installed kernels, and purgeable old versions",
-	Run:   runKernelStatus,
+	Use:     "status",
+	Aliases: []string{"list", "ls"},
+	Short:   "Show active running kernel, installed kernels, and purgeable old versions",
+	Run:     runKernelStatus,
 }
 
 var kReconfigureCmd = &cobra.Command{
@@ -55,6 +56,12 @@ var kDracutCmd = &cobra.Command{
 	},
 }
 
+var (
+	kPurgeKeep   int
+	kPurgeYes    bool
+	kPurgeDryRun bool
+)
+
 var kPurgeCmd = &cobra.Command{
 	Use:   "purge [all|version]",
 	Short: "Remove obsolete old kernel versions via vkpurge",
@@ -63,7 +70,7 @@ var kPurgeCmd = &cobra.Command{
 		if len(args) > 0 {
 			target = args[0]
 		}
-		if err := kernel.Purge(target); err != nil {
+		if err := kernel.PurgeWithOptions(target, kPurgeKeep, kPurgeDryRun, kPurgeYes); err != nil {
 			fmt.Println(ui.RenderError(err.Error()))
 			os.Exit(1)
 		}
@@ -233,6 +240,10 @@ var kRemoveCmd = &cobra.Command{
 }
 
 func init() {
+	kPurgeCmd.Flags().IntVarP(&kPurgeKeep, "keep", "k", 0, "Number of old kernels to keep as backup")
+	kPurgeCmd.Flags().BoolVarP(&kPurgeYes, "yes", "y", false, "Skip confirmation prompts")
+	kPurgeCmd.Flags().BoolVarP(&kPurgeDryRun, "dry-run", "n", false, "Preview kernel purge without deleting")
+
 	kernelCmd.AddCommand(kStatusCmd)
 	kernelCmd.AddCommand(kAvailableCmd)
 	kernelCmd.AddCommand(kReconfigureCmd)

@@ -160,14 +160,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		h := msg.Height - 8
-		if h < 5 {
-			h = 5
+		vpWidth := msg.Width - 4
+		if vpWidth < 10 {
+			vpWidth = 10
 		}
-		m.serviceList.SetSize(msg.Width-4, h)
-		m.packageList.SetSize(msg.Width-4, h)
-		m.logViewport.Width = msg.Width - 4
-		m.logViewport.Height = h
+		vpHeight := msg.Height - 6
+		if vpHeight < 5 {
+			vpHeight = 5
+		}
+		m.serviceList.SetSize(vpWidth, vpHeight)
+		m.packageList.SetSize(vpWidth, vpHeight)
+		m.logViewport.Width = vpWidth
+		m.logViewport.Height = vpHeight
 
 	case tea.KeyMsg:
 		// Global keys when search input is not focused

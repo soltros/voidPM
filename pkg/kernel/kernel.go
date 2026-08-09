@@ -258,17 +258,56 @@ func RemoveKernel(kernelPkg string) error {
 
 // Purge removes old unused kernel versions using vkpurge rm <target>
 func Purge(target string) error {
+	return PurgeWithOptions(target, 0, false, false)
+}
+
+func PurgeWithOptions(target string, keep int, dryRun bool, yes bool) error {
 	if _, err := exec.LookPath("vkpurge"); err != nil {
 		return fmt.Errorf("vkpurge utility is not installed")
 	}
 
-	if target == "" || target == "all" {
+	sk, err := GetSystemKernels()
+	if err != nil {
+		return err
+	}
+
+	oldKernels := sk.OldPurgeable
+	if len(oldKernels) == 0 {
+		fmt.Println("No obsolete kernels to purge.")
+		return nil
+	}
+
+	var toPurge []string
+	if keep > 0 {
+		if len(oldKernels) <= keep {
+			fmt.Printf("Found %d old kernel(s); keeping %d. Nothing to purge.\n", len(oldKernels), keep)
+			return nil
+		}
+		toPurge = oldKernels[:len(oldKernels)-keep]
+	} else if target != "" && target != "all" {
+		toPurge = []string{target}
+	} else {
+		toPurge = oldKernels
+	}
+
+	if dryRun {
+		fmt.Printf("[dry-run] The following kernel version(s) would be purged:\n%v\n", toPurge)
+		return nil
+	}
+
+	if len(toPurge) == len(oldKernels) && (target == "" || target == "all") && keep == 0 {
 		fmt.Println("--> Purging all unused old kernel versions...")
 		return sys.RunElevated("vkpurge", "rm", "all")
 	}
 
-	fmt.Printf("--> Purging kernel version %s...\n", target)
-	return sys.RunElevated("vkpurge", "rm", target)
+	for _, kver := range toPurge {
+		fmt.Printf("--> Purging kernel version %s...\n", kver)
+		if err := sys.RunElevated("vkpurge", "rm", kver); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // FindInstalledKernelModules discovers installed kernel module and driver packages (DKMS, nvidia, zfs, wifi)

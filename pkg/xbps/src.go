@@ -101,6 +101,20 @@ func (s *SrcManager) Sync() error {
 	return cmd.Run()
 }
 
+// UpdateSys updates void-packages git repository and updates masterdir chroot via ./xbps-src update-sys
+func (s *SrcManager) UpdateSys() error {
+	if err := s.Sync(); err != nil {
+		return err
+	}
+
+	fmt.Printf("--> Updating masterdir chroot in %s...\n", s.RepoDir)
+	cmd := exec.Command("./xbps-src", "update-sys")
+	cmd.Dir = s.RepoDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 // EnableRestrictedInConfig ensures XBPS_ALLOW_RESTRICTED=yes is in void-packages/etc/conf
 func (s *SrcManager) EnableRestrictedInConfig() error {
 	confPath := filepath.Join(s.RepoDir, "etc", "conf")
