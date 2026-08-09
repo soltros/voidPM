@@ -62,12 +62,14 @@ vpm src install voidpm
 - `vpm kernel purge [all|version]` - Remove old kernels via `vkpurge`.
 - `vpm kernel hold` / `unhold` - Hold or unhold kernel metapackage.
 
-### Source Packages (`vpm src`)
-- `vpm src setup` - Initialize `void-packages` repository.
+### Void Source Packages (`vpm src`)
+Manages non-distributable and custom source builds via `void-packages` (stored cleanly in `~/.void-packages`):
+- `vpm src setup` - Initialize `void-packages` repo into `~/.void-packages` and run binary bootstrap (auto-runs when needed).
+- `vpm src search <query>` - Rich template search in `srcpkgs/` with status, restricted badges, and descriptions.
+- `vpm src build <pkg>` - Build package from source (automatically detects `restricted=yes` licenses and passes required flags).
+- `vpm src install <pkg>` - Install built binary package from local `hostdir/binpkgs`.
 - `vpm src allow-restricted` - Enable restricted packages in `etc/conf`.
-- `vpm src build <pkg> [-m]` - Build package from source.
-- `vpm src install <pkg>` - Install compiled package from `hostdir/binpkgs`.
-- `vpm src sync` - Update `void-packages` repository (`git pull`).
+- `vpm src sync` - Update source package templates via `git pull`.
 
 ### System Maintenance (`vpm clean`)
 - `vpm clean cache` - Remove obsolete package cache files (`xbps-remove -O`).

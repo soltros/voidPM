@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -76,7 +77,7 @@ var srcInstallCmd = &cobra.Command{
 
 var srcSearchCmd = &cobra.Command{
 	Use:   "search <query>",
-	Short: "Search templates in void-packages srcpkgs/ directory",
+	Short: "Search templates in void-packages repository with metadata & restricted status",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		mgr := xbps.NewSrcManager()
@@ -85,10 +86,44 @@ var srcSearchCmd = &cobra.Command{
 			fmt.Println(ui.RenderError(err.Error()))
 			os.Exit(1)
 		}
-		fmt.Println(ui.RenderHeader(fmt.Sprintf("Source templates matching '%s' (%d found):", args[0], len(matches))))
-		for _, m := range matches {
-			fmt.Println("  - " + m)
+
+		if jsonOutput {
+			data, _ := json.MarshalIndent(matches, "", "  ")
+			fmt.Println(string(data))
+			return
 		}
+
+		ui.PrintBanner()
+		fmt.Println(ui.RenderHeader(fmt.Sprintf("Source templates matching '%s' (%d found in %s):", args[0], len(matches), mgr.RepoDir)))
+
+		cols := []ui.Column{
+			{Title: "STATUS", Width: 8},
+			{Title: "RESTRICTED", Width: 12},
+			{Title: "PACKAGE NAME", Width: 24},
+			{Title: "DESCRIPTION", Width: 45},
+		}
+
+		var rows [][]string
+		for _, m := range matches {
+			st := "[ ]"
+			if m.IsInstalled {
+				st = ui.InstalledBadge.Render("[*]")
+			}
+
+			restr := "-"
+			if m.IsRestricted {
+				restr = ui.OrphanBadge.Render("[RESTRICTED]")
+			}
+
+			rows = append(rows, []string{
+				st,
+				restr,
+				m.Name,
+				m.ShortDesc,
+			})
+		}
+
+		fmt.Println(ui.RenderTable(cols, rows))
 	},
 }
 
