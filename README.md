@@ -56,6 +56,7 @@ vpm src install voidpm
 - `vpm kernel status` - Show running and installed kernels.
 - `vpm kernel available` - List available kernel series in repositories.
 - `vpm kernel switch <series>` - Switch active kernel series (e.g., `linux-lts`).
+- `vpm kernel remove <series>` - Safely uninstall a specific kernel package/series (`vpm kernel remove linux7.1`).
 - `vpm kernel reconfigure [pkg]` - Reconfigure initramfs and bootloader hooks.
 - `vpm kernel dracut` - Regenerate all dracut initramfs images.
 - `vpm kernel purge [all|version]` - Remove old kernels via `vkpurge`.

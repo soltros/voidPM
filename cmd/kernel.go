@@ -217,6 +217,21 @@ var kAvailableCmd = &cobra.Command{
 	},
 }
 
+var kRemoveCmd = &cobra.Command{
+	Use:     "remove <kernel_package>",
+	Aliases: []string{"rm", "delete", "uninstall"},
+	Short:   "Safely uninstall a specified kernel package/series and update bootloader",
+	Args:    cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		pkg := args[0]
+		if err := kernel.RemoveKernel(pkg); err != nil {
+			fmt.Println(ui.RenderError(err.Error()))
+			os.Exit(1)
+		}
+		fmt.Println(ui.RenderSuccess(fmt.Sprintf("Kernel package '%s' removed successfully", pkg)))
+	},
+}
+
 func init() {
 	kernelCmd.AddCommand(kStatusCmd)
 	kernelCmd.AddCommand(kAvailableCmd)
@@ -224,6 +239,7 @@ func init() {
 	kernelCmd.AddCommand(kDracutCmd)
 	kernelCmd.AddCommand(kPurgeCmd)
 	kernelCmd.AddCommand(kSwitchCmd)
+	kernelCmd.AddCommand(kRemoveCmd)
 	kernelCmd.AddCommand(kHoldCmd)
 	kernelCmd.AddCommand(kUnholdCmd)
 

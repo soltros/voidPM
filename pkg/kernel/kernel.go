@@ -196,6 +196,66 @@ func RegenerateInitramfs() error {
 	return sys.RunElevated("dracut", "--regenerate-all", "--force")
 }
 
+// RemoveKernel safely uninstalls a specified kernel series or package
+func RemoveKernel(kernelPkg string) error {
+	if !strings.HasPrefix(kernelPkg, "linux") {
+		kernelPkg = "linux" + kernelPkg
+	}
+
+	sk, err := GetSystemKernels()
+	if err == nil {
+		if strings.HasPrefix(sk.RunningKernel, strings.TrimPrefix(kernelPkg, "linux")) {
+			return fmt.Errorf("cannot remove currently running kernel (%s). Switch/boot into another kernel first", sk.RunningKernel)
+		}
+	}
+
+	actualPkg := ResolveActualKernelPkg(kernelPkg)
+	headersPkg := kernelPkg + "-headers"
+	actualHeadersPkg := actualPkg + "-headers"
+
+	pkgsToRemove := []string{
+		kernelPkg,
+		headersPkg,
+		actualPkg,
+		actualHeadersPkg,
+		"linux-mainline",
+		"linux-mainline-headers",
+		"linux-lts",
+		"linux-lts-headers",
+	}
+
+	// Filter installed packages
+	var validRemovals []string
+	seen := make(map[string]bool)
+	for _, p := range pkgsToRemove {
+		if !seen[p] {
+			seen[p] = true
+			if out, err := exec.Command("xbps-query", "-S", p).Output(); err == nil && len(out) > 0 {
+				// Verify if p is related to target kernel or metapackage pointing to target
+				if strings.Contains(p, strings.TrimPrefix(kernelPkg, "linux")) || strings.Contains(p, strings.TrimPrefix(actualPkg, "linux")) || strings.Contains(p, "mainline") || strings.Contains(p, "lts") {
+					validRemovals = append(validRemovals, p)
+				}
+			}
+		}
+	}
+
+	if len(validRemovals) == 0 {
+		return fmt.Errorf("kernel package '%s' is not installed", kernelPkg)
+	}
+
+	fmt.Printf("--> Removing kernel packages: %v...\n", validRemovals)
+	args := append([]string{"xbps-remove", "-R", "-y"}, validRemovals...)
+	if err := sys.RunElevated(args...); err != nil {
+		return fmt.Errorf("failed to remove kernel packages: %w", err)
+	}
+
+	fmt.Println("--> Cleaning leftover boot files via vkpurge...")
+	_ = sys.RunElevated("vkpurge", "rm", "all")
+
+	fmt.Println("--> Reconfiguring bootloader & remaining initramfs images...")
+	return ReconfigureAll()
+}
+
 // Purge removes old unused kernel versions using vkpurge rm <target>
 func Purge(target string) error {
 	if _, err := exec.LookPath("vkpurge"); err != nil {
