@@ -73,3 +73,7 @@ vpm src install voidpm
 - `vpm clean orphans` - Remove unneeded orphan packages (`xbps-remove -o`).
 - `vpm clean kernels` - Remove old kernels (`vkpurge rm all`).
 - `vpm clean all` - Run all cleanup tasks.
+
+## License
+
+Distributed under the GNU General Public License v3.0 (GPL-3.0-or-later). See `LICENSE` for details.

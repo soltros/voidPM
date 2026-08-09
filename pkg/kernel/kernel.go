@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"sort"
+
 	"strings"
 
 	"github.com/voidlinux/voidpm/pkg/sys"
@@ -30,12 +32,10 @@ var kernelPkgRegex = regexp.MustCompile(`^(linux[0-9.]*|linux-lts|linux-mainline
 func GetSystemKernels() (*SystemKernels, error) {
 	sk := &SystemKernels{}
 
-	// Currently running kernel
 	if out, err := exec.Command("uname", "-r").Output(); err == nil {
 		sk.RunningKernel = strings.TrimSpace(string(out))
 	}
 
-	// Purgeable kernels via vkpurge
 	if out, err := exec.Command("vkpurge", "list").Output(); err == nil {
 		scanner := bufio.NewScanner(strings.NewReader(string(out)))
 		for scanner.Scan() {
@@ -46,7 +46,6 @@ func GetSystemKernels() (*SystemKernels, error) {
 		}
 	}
 
-	// Installed kernel packages via xbps-query
 	cmd := exec.Command("xbps-query", "-l")
 	out, err := cmd.Output()
 	if err == nil {
@@ -88,13 +87,84 @@ func GetSystemKernels() (*SystemKernels, error) {
 	return sk, nil
 }
 
-// Reconfigure re-runs dracut initramfs generation & bootloader hooks (xbps-reconfigure -f linux...)
+// ResolveActualKernelPkg resolves metapackages (linux, linux-lts, linux-mainline) to concrete package (e.g. linux7.1)
+func ResolveActualKernelPkg(flavor string) string {
+	cmd := exec.Command("xbps-query", "-RS", flavor)
+	out, err := cmd.Output()
+	if err != nil {
+		cmd = exec.Command("xbps-query", "-S", flavor)
+		out, err = cmd.Output()
+	}
+
+	if err == nil {
+		scanner := bufio.NewScanner(strings.NewReader(string(out)))
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if strings.HasPrefix(line, "run_depends:") {
+				for scanner.Scan() {
+					depLine := strings.TrimSpace(scanner.Text())
+					if !strings.HasPrefix(depLine, "linux") {
+						break
+					}
+					depName := strings.Fields(depLine)[0]
+					depName = strings.Split(depName, ">=")[0]
+					depName = strings.Split(depName, "<=")[0]
+					depName = strings.Split(depName, "=")[0]
+					if strings.HasPrefix(depName, "linux") && depName != "linux-base" && depName != flavor {
+						return depName
+					}
+				}
+			}
+		}
+	}
+	return flavor
+}
+
+// Reconfigure re-runs dracut initramfs generation & bootloader hooks (xbps-reconfigure -f <pkg>)
 func Reconfigure(kernelPkg string) error {
 	if kernelPkg == "" {
 		kernelPkg = "linux"
 	}
-	fmt.Printf("--> Reconfiguring kernel & initramfs for '%s'...\n", kernelPkg)
-	return sys.RunElevated("xbps-reconfigure", "-f", kernelPkg)
+	actual := ResolveActualKernelPkg(kernelPkg)
+
+	fmt.Printf("--> Reconfiguring kernel package '%s' (%s)...\n", kernelPkg, actual)
+	if err := sys.RunElevated("xbps-reconfigure", "-f", actual); err != nil {
+		_ = sys.RunElevated("xbps-reconfigure", "-f", kernelPkg)
+	}
+
+	// Reconfigure DKMS packages if any installed
+	ReconfigureDKMS()
+
+	// Reconfigure NetworkManager & audio if installed
+	_ = sys.RunElevated("xbps-reconfigure", "-f", "NetworkManager")
+
+	return RegenerateInitramfs()
+}
+
+// ReconfigureDKMS reconfigures all installed DKMS module packages for the active kernel
+func ReconfigureDKMS() {
+	cmd := exec.Command("xbps-query", "-l")
+	out, err := cmd.Output()
+	if err != nil {
+		return
+	}
+
+	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "ii ") && strings.Contains(line, "-dkms") {
+			parts := strings.Fields(line[3:])
+			if len(parts) >= 1 {
+				pkgFull := parts[0]
+				idx := strings.LastIndex(pkgFull, "-")
+				if idx > 0 {
+					name := pkgFull[:idx]
+					fmt.Printf("--> Reconfiguring DKMS package '%s'...\n", name)
+					_ = sys.RunElevated("xbps-reconfigure", "-f", name)
+				}
+			}
+		}
+	}
 }
 
 // ReconfigureAll reconfigures all installed kernel packages
@@ -105,12 +175,16 @@ func ReconfigureAll() error {
 	}
 
 	for _, k := range sk.Installed {
-		fmt.Printf("--> Reconfiguring kernel %s (%s)...\n", k.Name, k.Version)
-		if err := sys.RunElevated("xbps-reconfigure", "-f", k.Name); err != nil {
-			fmt.Printf("Warning: failed to reconfigure %s: %v\n", k.Name, err)
+		if !k.IsMeta {
+			fmt.Printf("--> Reconfiguring kernel %s (%s)...\n", k.Name, k.Version)
+			if err := sys.RunElevated("xbps-reconfigure", "-f", k.Name); err != nil {
+				fmt.Printf("Warning: failed to reconfigure %s: %v\n", k.Name, err)
+			}
 		}
 	}
-	return nil
+
+	ReconfigureDKMS()
+	return RegenerateInitramfs()
 }
 
 // RegenerateInitramfs runs dracut --regenerate-all --force
@@ -137,23 +211,88 @@ func Purge(target string) error {
 	return sys.RunElevated("vkpurge", "rm", target)
 }
 
-// SwitchFlavor changes kernel metapackage (e.g. linux-lts, linux6.6)
+// FindInstalledKernelModules discovers installed kernel module and driver packages (DKMS, nvidia, zfs, wifi)
+func FindInstalledKernelModules() []string {
+	cmd := exec.Command("xbps-query", "-l")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	var modules []string
+	scanner := bufio.NewScanner(strings.NewReader(string(out)))
+	modRegex := regexp.MustCompile(`^(nvidia|zfs|v4l2loopback|wireguard|broadcom-wl|realtek|virtualbox-ose|tp_smapi|acpi_call|ddcci)(-.*)?$`)
+
+	seen := make(map[string]bool)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "ii ") {
+			parts := strings.Fields(line[3:])
+			if len(parts) >= 1 {
+				pkgFull := parts[0]
+				idx := strings.LastIndex(pkgFull, "-")
+				if idx > 0 {
+					name := pkgFull[:idx]
+					if (modRegex.MatchString(name) || strings.HasSuffix(name, "-dkms")) && !seen[name] {
+						seen[name] = true
+						modules = append(modules, name)
+					}
+				}
+			}
+		}
+	}
+	return modules
+}
+
+// SwitchFlavor changes kernel series, resolving metapackages, preserving drivers, DKMS, and dracut
 func SwitchFlavor(flavor string) error {
 	if !strings.HasPrefix(flavor, "linux") {
 		flavor = "linux" + flavor
 	}
 
+	actualPkg := ResolveActualKernelPkg(flavor)
 	headersPkg := flavor + "-headers"
-	fmt.Printf("--> Installing kernel flavor '%s' and headers '%s'...\n", flavor, headersPkg)
-	if err := sys.RunElevated("xbps-install", "-Sy", flavor, headersPkg); err != nil {
-		// Fallback to just kernel flavor if headers fail
-		if err := sys.RunElevated("xbps-install", "-Sy", flavor); err != nil {
-			return err
+	actualHeadersPkg := actualPkg + "-headers"
+
+	fmt.Printf("--> Switching kernel to series '%s' (concrete: %s)...\n", flavor, actualPkg)
+
+	// Core kernel + firmware + audio topology bundle
+	pkgsToInstall := []string{
+		flavor,
+		headersPkg,
+		actualPkg,
+		actualHeadersPkg,
+		"linux-firmware",
+		"wifi-firmware",
+		"sof-firmware",
+		"alsa-firmware",
+		"alsa-ucm-conf",
+	}
+
+	// Preserve any existing hardware driver / DKMS packages
+	driverModules := FindInstalledKernelModules()
+	if len(driverModules) > 0 {
+		fmt.Printf("--> Preserving existing driver/DKMS packages: %v...\n", driverModules)
+		pkgsToInstall = append(pkgsToInstall, driverModules...)
+	}
+
+	var validPkgs []string
+	seen := make(map[string]bool)
+	for _, p := range pkgsToInstall {
+		if !seen[p] {
+			seen[p] = true
+			validPkgs = append(validPkgs, p)
 		}
 	}
 
-	fmt.Println("--> Reconfiguring bootloader and initramfs...")
-	return Reconfigure(flavor)
+	args := append([]string{"xbps-install", "-Sy"}, validPkgs...)
+	fmt.Printf("--> Installing kernel, headers, firmware, and drivers: %v...\n", validPkgs)
+	if err := sys.RunElevated(args...); err != nil {
+		_ = sys.RunElevated("xbps-install", "-Sy", flavor, actualPkg)
+	}
+
+	fmt.Println("--> Reconfiguring kernel, DKMS, udevd, NetworkManager, and dracut...")
+	return Reconfigure(actualPkg)
 }
 
 // ListAvailableKernels searches repositories for available Linux kernel branches
@@ -166,7 +305,6 @@ func ListAvailableKernels() ([]KernelPkg, error) {
 
 	var kernels []KernelPkg
 	scanner := bufio.NewScanner(strings.NewReader(string(out)))
-	// Strictly match linux, linux-lts, linux-mainline, linux6.x, linux5.x
 	re := regexp.MustCompile(`^(\[\*\]|\[-\])\s+(linux[0-9.]*|linux-lts|linux-mainline|linux)-([0-9][^\s]*)\s+(.*)$`)
 
 	seen := make(map[string]bool)
@@ -191,5 +329,10 @@ func ListAvailableKernels() ([]KernelPkg, error) {
 			})
 		}
 	}
+
+	sort.Slice(kernels, func(i, j int) bool {
+		return kernels[i].Name < kernels[j].Name
+	})
+
 	return kernels, nil
 }

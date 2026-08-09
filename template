@@ -6,7 +6,7 @@ build_style=go
 go_import_path="github.com/voidlinux/voidpm"
 short_desc="Elegant Void Linux System & Package Manager Overlay"
 maintainer="Derrik <derrik@voidlinux.local>"
-license="MIT"
+license="GPL-3.0-or-later"
 homepage="https://github.com/voidlinux/voidpm"
 
 do_fetch() {
