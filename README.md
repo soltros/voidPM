@@ -1,8 +1,8 @@
-# voidPM (vpm)
+# VPM (Void Poweruser Management System)
 
-A unified system helper and package management overlay for Void Linux.
+A unified system helper, kernel series manager, runit supervisor, and package management overlay for Void Linux.
 
-voidPM unifies Runit service supervision, XBPS package management, Void Kernel branch control, xbps-src source package compilation, and system maintenance into a single command-line tool and terminal user interface.
+**VPM** (`vpm`) unifies Runit service supervision, XBPS package management, Void Kernel series branch control, `xbps-src` source package compilation, and system maintenance into a single command-line tool and interactive terminal user interface (TUI).
 
 ## Features
 
@@ -11,6 +11,7 @@ voidPM unifies Runit service supervision, XBPS package management, Void Kernel b
 - Kernel Management (`vpm kernel`): Inspect running/installed kernels, discover repository kernel branches, switch kernel series (`linux-lts`, `linux-mainline`), reconfigure initramfs/bootloader, regenerate dracut images, purge old kernels via `vkpurge`.
 - Source Packages (`vpm src`): Setup `void-packages` repository, toggle `XBPS_ALLOW_RESTRICTED=yes`, build templates, install local `.xbps` binary packages.
 - System Maintenance (`vpm clean`): Cache clearing, orphan removal, kernel purging, full system cleanup.
+- Self-Update (`vpm self-update`): Automatic GitHub API release fetching & binary overwrite into `/usr/bin/vpm`.
 - Interactive TUI Dashboard (`vpm dashboard` / `vpm`): Terminal interface built with Bubble Tea and Lipgloss.
 
 ## Build and Installation
@@ -21,6 +22,11 @@ make build
 sudo make install
 ```
 
+### Self-Update from GitHub Releases
+```bash
+vpm self-update
+```
+
 ### Build Void Package (xbps-src)
 ```bash
 vpm src setup
@@ -29,6 +35,10 @@ vpm src install voidpm
 ```
 
 ## Command Reference
+
+### Self-Update (`vpm self-update`)
+- `vpm self-update` - Query GitHub API (`soltros/voidPM`), download latest release binary, and overwrite `/usr/bin/vpm`.
+- `vpm sync --self` / `vpm update -s` - Perform self-update before system upgrade.
 
 ### Runit Services (`vpm sv`)
 - `vpm sv status` - Show status table of all runit services.
