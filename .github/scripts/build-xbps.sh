@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 set -ex
 
 echo '==> Updating Void repositories and installing build dependencies...'
@@ -7,7 +7,7 @@ xbps-install -uy xbps
 xbps-install -Sy bash git go make bsdtar coreutils shadow
 
 echo '==> Creating unprivileged builder user...'
-if ! id -u builder &>/dev/null; then
+if ! id -u builder >/dev/null 2>&1; then
     useradd -m -s /bin/bash builder
 fi
 

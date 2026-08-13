@@ -88,7 +88,7 @@ jobs:
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             ghcr.io/void-linux/void-linux:latest-full-x86_64 \
-            /workspace/.github/scripts/build-xbps.sh
+            sh /workspace/.github/scripts/build-xbps.sh
 
 
       - name: Generate Checksums
