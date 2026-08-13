@@ -2,15 +2,20 @@ name: Build and Release XBPS Package
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
       - '[0-9]*'
+  pull_request:
+    branches:
+      - main
   release:
     types: [published, created]
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag or version string to release (e.g. v0.1.0)'
+        description: 'Tag or version string to release (e.g. v0.1.0 or latest)'
         required: false
         default: ''
 
@@ -33,6 +38,10 @@ jobs:
         with:
           go-version: '1.22'
 
+      - name: Run Unit Tests
+        run: |
+          go test -v ./...
+
       - name: Determine Version and Tag
         id: version
         run: |
@@ -42,17 +51,22 @@ jobs:
             TAG_NAME="${{ github.event.inputs.tag_name }}"
           elif [ -n "${{ github.event.release.tag_name }}" ]; then
             TAG_NAME="${{ github.event.release.tag_name }}"
+          elif [ "${GITHUB_REF_NAME}" = "main" ]; then
+            TAG_NAME="latest"
           else
-            TAG_NAME="v$(grep '^version=' template | cut -d'=' -f2)"
+            TAG_NAME="latest"
           fi
 
-          # Ensure TAG_NAME starts with 'v' for release tagging consistency
-          if [[ "${TAG_NAME}" != v* ]]; then
-            TAG_NAME="v${TAG_NAME}"
+          if [ "${TAG_NAME}" = "latest" ]; then
+            BASE_VER="$(grep '^version=' template | cut -d'=' -f2)"
+            SHORT_SHA="$(git rev-parse --short HEAD)"
+            VERSION="${BASE_VER}"
+          else
+            if [[ "${TAG_NAME}" != v* ]]; then
+              TAG_NAME="v${TAG_NAME}"
+            fi
+            VERSION="${TAG_NAME#v}"
           fi
-
-          # Extract version without 'v' prefix for XBPS package template
-          VERSION="${TAG_NAME#v}"
 
           echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
@@ -75,7 +89,9 @@ jobs:
             sh -c "
               set -e
               echo '==> Updating Void repositories and installing build dependencies...'
-              xbps-install -Sy git go make xbps bsdtar
+              xbps-install -Sy
+              xbps-install -uy xbps
+              xbps-install -Sy git go make bsdtar
 
               echo '==> Cloning void-packages repository...'
               git clone --depth=1 https://github.com/void-linux/void-packages.git /tmp/void-packages
@@ -106,6 +122,7 @@ jobs:
           cat SHA256SUMS
 
       - name: Create Release & Upload Assets
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -117,7 +134,13 @@ jobs:
             gh release upload "${TAG}" ./* --clobber
           else
             echo "==> Creating new GitHub Release ${TAG}..."
+            PRERELEASE_FLAG=""
+            if [ "${TAG}" = "latest" ]; then
+              PRERELEASE_FLAG="--prerelease"
+            fi
+
             gh release create "${TAG}" ./* \
               --title "voidPM ${TAG}" \
+              ${PRERELEASE_FLAG} \
               --generate-notes
           fi
