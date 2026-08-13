@@ -1,0 +1,123 @@
+name: Build and Release XBPS Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - '[0-9]*'
+  release:
+    types: [published, created]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag or version string to release (e.g. v0.1.0)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Determine Version and Tag
+        id: version
+        run: |
+          if [ -n "${GITHUB_REF_NAME}" ] && [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG_NAME="${GITHUB_REF_NAME}"
+          elif [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            TAG_NAME="${{ github.event.inputs.tag_name }}"
+          elif [ -n "${{ github.event.release.tag_name }}" ]; then
+            TAG_NAME="${{ github.event.release.tag_name }}"
+          else
+            TAG_NAME="v$(grep '^version=' template | cut -d'=' -f2)"
+          fi
+
+          # Ensure TAG_NAME starts with 'v' for release tagging consistency
+          if [[ "${TAG_NAME}" != v* ]]; then
+            TAG_NAME="v${TAG_NAME}"
+          fi
+
+          # Extract version without 'v' prefix for XBPS package template
+          VERSION="${TAG_NAME#v}"
+
+          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Using TAG_NAME=${TAG_NAME}, VERSION=${VERSION}"
+
+      - name: Build Standalone Go Binary
+        run: |
+          mkdir -p dist
+          go build -ldflags="-s -w" -o dist/vpm .
+          tar -czvf dist/vpm-linux-amd64.tar.gz -C dist vpm
+
+      - name: Build XBPS Package via Docker (Void Linux)
+        run: |
+          docker run --privileged --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            ghcr.io/void-linux/void-linux:latest-full-x86_64 \
+            sh -c "
+              set -e
+              echo '==> Updating Void repositories and installing build dependencies...'
+              xbps-install -Sy git go make xbps bsdtar
+
+              echo '==> Cloning void-packages repository...'
+              git clone --depth=1 https://github.com/void-linux/void-packages.git /tmp/void-packages
+
+              echo '==> Preparing srcpkgs/voidpm template...'
+              mkdir -p /tmp/void-packages/srcpkgs/voidpm/files
+              cp -a /workspace/template /tmp/void-packages/srcpkgs/voidpm/template
+              sed -i \"s/^version=.*/version=${VERSION}/\" /tmp/void-packages/srcpkgs/voidpm/template
+
+              echo '==> Copying voidPM source code...'
+              tar --exclude='./dist' --exclude='./.git' -cf - -C /workspace . | tar -xf - -C /tmp/void-packages/srcpkgs/voidpm/files/
+
+              echo '==> Bootstrapping xbps-src environment...'
+              cd /tmp/void-packages
+              ./xbps-src binary-bootstrap
+
+              echo '==> Compiling voidpm XBPS package...'
+              ./xbps-src pkg voidpm
+
+              echo '==> Copying built XBPS package artifacts to workspace dist...'
+              find hostdir/binpkgs -type f -name '*.xbps' -exec cp -v {} /workspace/dist/ \;
+            "
+
+      - name: Generate Checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create Release & Upload Assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd dist
+          TAG="${{ env.TAG_NAME }}"
+          
+          if gh release view "${TAG}" &>/dev/null; then
+            echo "==> Release ${TAG} already exists. Uploading/updating assets..."
+            gh release upload "${TAG}" ./* --clobber
+          else
+            echo "==> Creating new GitHub Release ${TAG}..."
+            gh release create "${TAG}" ./* \
+              --title "voidPM ${TAG}" \
+              --generate-notes
+          fi

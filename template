@@ -17,3 +17,8 @@ do_fetch() {
 		bsdtar -xzf "${XBPS_SRCDIR}/distfiles/${pkgname}-${version}.tar.gz" -C "${wrksrc}"
 	fi
 }
+
+post_install() {
+	ln -sf voidpm "${DESTDIR}/usr/bin/vpm"
+}
+
