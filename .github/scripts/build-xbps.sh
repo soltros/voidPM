@@ -6,8 +6,8 @@ xbps-install -Sy
 xbps-install -uy xbps
 xbps-install -Sy bash git go make bsdtar coreutils
 
-# Allow xbps-src to run with root permissions inside Docker container
-export XBPS_ALLOW_CHROOT=yes
+# Create a non-root user to run xbps-src
+useradd -m -s /bin/bash builder || true
 
 BUILD_DIR="/tmp/void-packages"
 rm -rf "${BUILD_DIR}"
@@ -23,12 +23,15 @@ sed -i "s/^version=.*/version=${VERSION}/" "${BUILD_DIR}/srcpkgs/voidpm/template
 echo '==> Copying voidPM source code...'
 tar --exclude='./dist' --exclude='./.git' -cf - -C /workspace . | tar -xf - -C "${BUILD_DIR}/srcpkgs/voidpm/files/"
 
+# Change ownership of build directories to the non-root user
+chown -R builder:builder "${BUILD_DIR}" /workspace
+
 echo '==> Bootstrapping xbps-src environment...'
 cd "${BUILD_DIR}"
-./xbps-src binary-bootstrap
+su - builder -c "cd ${BUILD_DIR} && ./xbps-src binary-bootstrap"
 
 echo '==> Compiling voidpm XBPS package...'
-./xbps-src pkg voidpm
+su - builder -c "cd ${BUILD_DIR} && ./xbps-src pkg voidpm"
 
 echo '==> Copying built XBPS package artifacts to workspace dist...'
 mkdir -p /workspace/dist
