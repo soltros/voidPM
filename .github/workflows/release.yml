@@ -83,6 +83,7 @@ jobs:
       - name: Build XBPS Package via Docker (Void Linux)
         run: |
           docker run --privileged --rm \
+            -e VERSION="${{ env.VERSION }}" \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             ghcr.io/void-linux/void-linux:latest-full-x86_64 \
@@ -91,7 +92,7 @@ jobs:
               echo '==> Updating Void repositories and installing build dependencies...'
               xbps-install -Sy
               xbps-install -uy xbps
-              xbps-install -Sy git go make bsdtar
+              xbps-install -Sy bash git go make bsdtar coreutils
 
               echo '==> Cloning void-packages repository...'
               git clone --depth=1 https://github.com/void-linux/void-packages.git /tmp/void-packages
@@ -99,7 +100,7 @@ jobs:
               echo '==> Preparing srcpkgs/voidpm template...'
               mkdir -p /tmp/void-packages/srcpkgs/voidpm/files
               cp -a /workspace/template /tmp/void-packages/srcpkgs/voidpm/template
-              sed -i \"s/^version=.*/version=${VERSION}/\" /tmp/void-packages/srcpkgs/voidpm/template
+              sed -i \"s/^version=.*/version=\${VERSION}/\" /tmp/void-packages/srcpkgs/voidpm/template
 
               echo '==> Copying voidPM source code...'
               tar --exclude='./dist' --exclude='./.git' -cf - -C /workspace . | tar -xf - -C /tmp/void-packages/srcpkgs/voidpm/files/
