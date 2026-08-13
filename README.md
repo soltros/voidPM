@@ -14,25 +14,42 @@ A unified system helper, kernel series manager, runit supervisor, and package ma
 - Self-Update (`vpm self-update`): Automatic GitHub API release fetching & binary overwrite into `/usr/bin/vpm`.
 - Interactive TUI Dashboard (`vpm dashboard` / `vpm`): Terminal interface built with Bubble Tea and Lipgloss.
 
-## Build and Installation
+## Installation
 
-### Build Binary
+### Option 1: Install XBPS Package (Recommended)
+Download and install the pre-compiled `.xbps` binary package directly:
 ```bash
-make build
-sudo make install
+# Download the latest release package
+curl -LO https://github.com/soltros/voidPM/releases/latest/download/voidpm-0.1.0_1.x86_64.xbps
+
+# Install via xbps-install
+sudo xbps-install -y ./voidpm-0.1.0_1.x86_64.xbps
 ```
 
-### Self-Update from GitHub Releases
+### Option 2: Direct Binary Installation
+Install the compiled `vpm` executable directly into `/usr/bin`:
+```bash
+sudo curl -L -o /usr/bin/vpm https://github.com/soltros/voidPM/releases/latest/download/vpm
+sudo chmod +x /usr/bin/vpm
+```
+
+### Option 3: Self-Update
+If `vpm` is already installed on your system, perform a self-update at any time:
 ```bash
 vpm self-update
 ```
 
-### Build Void Package (xbps-src)
+### Option 4: Build from Source
 ```bash
-vpm src setup
+# Build and install local binary:
+make build
+sudo make install
+
+# Or build local XBPS package using xbps-src:
 make package
-vpm src install voidpm
+sudo xbps-install -y --repository=dist voidpm
 ```
+
 
 ## Command Reference
 
