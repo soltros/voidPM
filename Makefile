@@ -5,7 +5,7 @@ BINDIR ?= $(PREFIX)/bin
 PKGNAME = voidpm
 VERSION = 0.1.0
 
-.PHONY: all build install uninstall package clean test
+.PHONY: all build install uninstall package publish clean test
 
 all: build
 
@@ -23,13 +23,12 @@ uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/vpm
 
 package:
-	@echo "==> Packaging voidPM for void-packages (xbps-src)..."
-	@mkdir -p ~/void-packages/srcpkgs/$(PKGNAME)/files
-	@cp -a template ~/void-packages/srcpkgs/$(PKGNAME)/template
-	@cp -a . ~/void-packages/srcpkgs/$(PKGNAME)/files/
-	@echo "==> Triggering xbps-src build..."
-	vpm src build $(PKGNAME)
+	@./scripts/build-package.sh
+
+publish:
+	@./scripts/build-package.sh --publish
 
 clean:
 	@echo "==> Cleaning build artifacts..."
-	rm -f vpm
+	rm -rf vpm dist/
+
