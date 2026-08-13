@@ -83,7 +83,7 @@ jobs:
       - name: Build XBPS Package via Docker (Void Linux)
         run: |
           chmod +x .github/scripts/build-xbps.sh
-          docker run --privileged --rm \
+          docker run --privileged --security-opt seccomp=unconfined --security-opt apparmor=unconfined --rm \
             -e VERSION="${{ env.VERSION }}" \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \

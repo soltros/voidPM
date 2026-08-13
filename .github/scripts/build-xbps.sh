@@ -28,11 +28,8 @@ tar --exclude='./dist' --exclude='./.git' -cf - -C /workspace . | tar -xf - -C "
 echo '==> Setting ownership for builder user...'
 chown -R builder:builder /home/builder
 
-echo '==> Bootstrapping xbps-src environment...'
-su - builder -c "cd ${BUILD_DIR} && ./xbps-src binary-bootstrap"
-
-echo '==> Compiling voidpm XBPS package...'
-su - builder -c "cd ${BUILD_DIR} && ./xbps-src pkg voidpm"
+echo '==> Compiling voidpm XBPS package (non-chroot mode)...'
+su - builder -c "cd ${BUILD_DIR} && ./xbps-src -N pkg voidpm"
 
 echo '==> Copying built XBPS package artifacts to workspace dist...'
 mkdir -p /workspace/dist
